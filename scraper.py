@@ -1,0 +1,98 @@
+import streamlit as st
+from langchain_community.document_loaders import SeleniumURLLoader
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_ollama import OllamaEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_ollama.llms import OllamaLLM
+
+# Define a standard query to be passed to the Ollama Model
+template = """
+You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
+Question: {question} 
+Context: {context} 
+Answer:
+"""
+
+# Define a vector store, to index the documents
+embeddings = OllamaEmbeddings(model="llama3.2")
+vector_store = InMemoryVectorStore(embeddings)
+
+model = OllamaLLM(model="llama3.2")
+
+def load_page(url):
+    """Returns the URL page loaded from the given URL."""
+
+    loader = SeleniumURLLoader(urls=[url])
+    documents = loader.load()
+
+    return documents
+
+def split_text(documents):
+    """Splits the given document into chunks and returns it into a concatenated data structure"""
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        add_start_index=True
+    )
+
+    data = text_splitter.split_documents(documents)
+
+    return data
+
+
+def index_docs(documents):
+    """
+        LangChain will pass the docs to the embedded model of Ollama and get all of the embeddings
+        from it, and then store the vectors.
+    """
+
+    vector_store.add_documents(documents)
+
+def retrive_docs(query):
+    """
+    It retrieves the documents by executing the given query.
+    """
+
+    return vector_store.similarity_search(query)
+
+def answer_question(question, context):
+    prompt = ChatPromptTemplate.from_template(template)
+    chain = prompt | model
+
+    return chain.invoke(
+        {
+         "question": question,
+         "context": context
+        }
+    )
+
+st.set_page_config(
+    page_title="WebScrapper 1.0",
+    page_icon="https://cdn-icons-png.flaticon.com/512/2738/2738091.png",
+    layout="centered",
+    initial_sidebar_state="expanded",
+    menu_items={
+        "About" : "This is the first version of the app. It uses a pretrained Ollama model to give you the best information about your URL. Have fun :).",
+        "Report a bug" : "https://github.com/danielgavrila2"
+    }
+)
+st.title("AI powered WebScrapper")
+url = st.text_input("Enter URL:")
+
+
+docs = load_page(url)
+chunks = split_text(docs)
+
+index_docs(chunks)
+
+question = st.chat_input()
+if question:
+    st.chat_message("user").write(question)
+
+    retrieved_docs = retrive_docs(question)
+    context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+    answer = answer_question(question, context)
+
+    st.chat_message("robot").write(answer)
