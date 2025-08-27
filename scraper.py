@@ -28,6 +28,7 @@ def load_page(url):
 
     return documents
 
+
 def split_text(documents):
     """Splits the given document into chunks and returns it into a concatenated data structure"""
 
